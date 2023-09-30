@@ -245,7 +245,7 @@ class Collection:
                 )
     
     def similar_to_collection(
-        self, other, number: int = 10
+        self, other: 'Collection', number: int = 10
     ) -> List[MultiEntry]:
         """
         Find similar items in the collection compared to another collection.
