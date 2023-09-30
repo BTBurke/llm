@@ -8,6 +8,7 @@ from sqlite_utils import Database
 from sqlite_utils.db import Table
 import time
 from typing import cast, Any, Dict, Iterable, List, Optional, Tuple, Union
+import tempfile
 
 
 @dataclass
@@ -17,6 +18,12 @@ class Entry:
     content: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
+@dataclass
+class MultiEntry:
+    id: (str, str)
+    score: Optional[float]
+    content: (Optional[str], Optional[str]) = (None, None)
+    metadata: (Optional[Dict[str, Any]], Optional[Dict[str, Any]]) = (None, None)
 
 class Collection:
     class DoesNotExist(Exception):
@@ -236,6 +243,59 @@ class Collection:
                     ),
                     replace=True,
                 )
+    
+    def similar_to_collection(
+        self, other, number: int = 10
+    ) -> List[MultiEntry]:
+        """
+        Find similar items in the collection compared to another collection.
+
+        Args:
+            other (Collection): other collection to compare against
+            number (int, optional): Number of similar items to return
+
+        Returns:
+            list: List of MultiEntry objects
+        """
+        import llm
+
+        def distance_score2(this_encoded, other_encoded):
+            this_vector = llm.decode(this_encoded)
+            other_vector = llm.decode(other_encoded)
+            return llm.cosine_similarity(other_vector, this_vector)
+
+        self.db.register_function(distance_score2, replace=True)
+        
+        otherdb = tempfile.mkstemp(suffix='.db')[1]
+        print('other db path: {}'.format(otherdb))
+        other.db.execute("vacuum main into '{}'".format(otherdb))
+        self.db.attach("other", otherdb)
+
+        where_bits = ["a.collection_id = ?", "b.collection_id = ?"]
+        where_args = [str(self.id), str(other.id)]
+
+        return [
+            MultiEntry(
+                id=(row["id_a"], row["id_b"]),
+                score=row["score"],
+                content=(row["content_a"], row["content_b"]),
+                metadata=(json.loads(row["metadata_a"]) if row["metadata_a"] else None, json.loads(row["metadata_b"]) if row["metadata_b"] else None), 
+            )
+            for row in self.db.query(
+                """
+            select a.id as id_a, a.content as content_a, a.metadata as metadata_a, distance_score2(a.embedding, b.embedding) as score,
+            b.id as id_b, b.content as content_b, b.metadata as metadata_b
+            from embeddings a
+            cross join other.embeddings b
+            where {where}
+            order by score desc limit {number}
+        """.format(
+                    where=" and ".join(where_bits),
+                    number=number,
+                ),
+                where_args,
+            )
+        ]
 
     def similar_by_vector(
         self, vector: List[float], number: int = 10, skip_id: Optional[str] = None

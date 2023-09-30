@@ -1,6 +1,6 @@
 import json
 import llm
-from llm.embeddings import Entry
+from llm.embeddings import Entry, MultiEntry
 import pytest
 import sqlite_utils
 from unittest.mock import ANY
@@ -90,6 +90,19 @@ def test_similar(collection):
     assert results == [
         Entry(id="1", score=pytest.approx(0.9999999999999999)),
         Entry(id="2", score=pytest.approx(0.9863939238321437)),
+    ]
+
+
+def test_similar_to_collection(collection):
+    collection2 = llm.Collection("test2", model_id="embed-demo")
+    collection2.embed(1, "hello world")
+    collection2.embed(2, "goodbye world")
+    results = list(collection.similar_to_collection(collection2))
+    assert results == [
+        MultiEntry(id=("2", "2"), score=pytest.approx(0.9999999999999999)),
+        MultiEntry(id=("1", "1"), score=pytest.approx(0.9999999999999999)),
+        MultiEntry(id=("1", "2"), score=pytest.approx(0.9863939238321437)),
+        MultiEntry(id=("2", "1"), score=pytest.approx(0.9863939238321437)),
     ]
 
 
