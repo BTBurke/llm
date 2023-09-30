@@ -245,7 +245,7 @@ class Collection:
                 )
     
     def similar_to_collection(
-        self, other: 'Collection', number: int = 10
+        self, other: 'Collection', number: int = 10, min_score: Optional[float] = None
     ) -> List[MultiEntry]:
         """
         Find similar items in the collection compared to another collection.
@@ -273,6 +273,9 @@ class Collection:
 
         where_bits = ["a.collection_id = ?", "b.collection_id = ?"]
         where_args = [str(self.id), str(other.id)]
+        if min_score is not None:
+            where_bits.append("score >= ?")
+            where_args.append(min_score)
 
         return [
             MultiEntry(
